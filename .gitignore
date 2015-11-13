@@ -1,0 +1,16 @@
+## By default, ignore everything
+*
+## Do not ignore .gitignore
+!/.gitignore
+## Do not ignore the spec files
+!/*.tla
+## Do not ignore the relevant model files/folders
+/*.toolbox/*
+!/*.toolbox/
+!/*.toolbox/.project
+!/*.toolbox/*.launch
+## Ignore everything in .settings/ except the pref file
+/*.toolbox/.settings/*
+!/*.toolbox/.settings/
+!/*.toolbox/.settings/org.lamport.tla.toolbox.prefs
+
