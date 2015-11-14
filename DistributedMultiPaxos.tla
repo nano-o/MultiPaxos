@@ -28,7 +28,7 @@ Msgs ==
     {<<"1a", b>> : b \in Ballots} \cup
     {<<"1b", a, i, b, <<maxB, v>>>> : i \in Instances, a \in Acceptors, 
         b \in Ballots, maxB \in Ballots \cup {-1}, v \in V \cup {None}} \cup
-    {<<"2a", b, v>> : b \in Ballots, v \in V}
+    {<<"2a", i, b, v>> : i \in Instances, b \in Ballots, v \in V}
     
 Init ==
     /\  ballot = [a \in Acceptors |-> -1]
@@ -97,20 +97,20 @@ MaxVote(b, i, Q) ==
 (* if it has not done so before.                                           *)
 (***************************************************************************)    
 Phase2a(b, i) ==
-    /\ \neg (\E m \in network : m[1] = "2a" /\ m[2] = b)
+    /\ \neg (\E m \in network : m[1] = "2a" /\ m[2] = i /\ m[3] = b)
     /\ \E Q \in Quorums :
         /\  \A a \in Q : \E m \in 1bMsgs(b, i, Q) : m[2] = a
         /\  LET  maxV == MaxVote(b, i , Q)
                  safe == IF maxV # None THEN {maxV} ELSE propCmds
-            IN  \E v \in safe : network' = network \cup {<<"2a", b, v>>}
+            IN  \E v \in safe : network' = network \cup {<<"2a", i, b, v>>}
     /\  UNCHANGED <<propCmds, ballot, vote>>
 
 Vote(a, b, i) ==
     /\  ballot[a] = b
     /\  \E m \in network : 
-            /\  m[1] = "2a" /\ m[2] = b
+            /\  m[1] = "2a" /\ m[2] = i /\ m[3] = b
             /\  vote' = [vote EXCEPT ![a] = [@ EXCEPT ![i] = 
-                    [@ EXCEPT ![b] = m[3]]]]
+                    [@ EXCEPT ![b] = m[4]]]]
     /\  UNCHANGED <<propCmds, ballot, network>>
     
 Next == 
@@ -119,8 +119,14 @@ Next ==
     \/  \E a \in Acceptors, b \in Ballots, v \in V : Phase1b(a, b, v)
     \/  \E b \in Ballots, i \in Instances : Phase2a(b, i)
     \/  \E a \in Acceptors, b \in Ballots, i \in Instances : Vote(a, b, i)
+    
+Spec == Init /\ [][Next]_<<propCmds, ballot, vote, network>>
+
+MultiPaxos == INSTANCE MultiPaxos
+
+THEOREM Spec => MultiPaxos!Spec
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Nov 14 17:01:48 EST 2015 by nano
+\* Last modified Sat Nov 14 17:53:17 EST 2015 by nano
 \* Created Fri Nov 13 17:59:21 EST 2015 by nano

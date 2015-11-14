@@ -176,7 +176,7 @@ JoinBallot(a, b) ==
 Vote(a,i) ==
     /\  ballot[a] # -1
     /\  vote[a][i][ballot[a]] = None
-    /\  \E Q \in Quorums : 
+    /\  \E Q \in Quorums :
             /\  \A q \in Q : ballot[q] \geq ballot[a]
             /\  \E v \in ProvedSafeAt(i, Q, ballot[a]) \cap propCmds : 
                     vote' = [vote EXCEPT ![a] = 
@@ -192,9 +192,11 @@ Next ==
 Correctness ==  
     \A i \in Instances : \A v1,v2 \in V :
         Chosen(i, v1) /\ Chosen(i, v2) => v1 = v2
+
+Spec == Init /\ [][Next]_<<ballot,vote,propCmds>>
         
 
 =============================================================================
 \* Modification History
-\* Last modified Fri Nov 13 17:47:59 EST 2015 by nano
+\* Last modified Sat Nov 14 17:36:29 EST 2015 by nano
 \* Created Mon Nov 02 09:08:37 EST 2015 by nano
