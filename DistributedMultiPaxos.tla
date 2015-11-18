@@ -17,11 +17,6 @@ VARIABLES
     ballot, vote, network, propCmds
 
 (***************************************************************************)
-(* Each ballot has a leader                                                *)
-(***************************************************************************)
-Leader(b) == CHOOSE f \in [Ballots -> Acceptors] : TRUE
-
-(***************************************************************************)
 (* We do not model learners, so no need for 2b messages                    *)
 (***************************************************************************)
 Msgs == 
@@ -128,5 +123,5 @@ THEOREM Spec => MultiPaxos!Spec
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Nov 14 17:53:17 EST 2015 by nano
+\* Last modified Wed Nov 18 18:41:57 EST 2015 by nano
 \* Created Fri Nov 13 17:59:21 EST 2015 by nano
