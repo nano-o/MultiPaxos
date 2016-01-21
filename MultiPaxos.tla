@@ -39,43 +39,10 @@ TypeInv ==
                 [Ballots -> {None} \cup V]]]
     /\  propCmds \in SUBSET V
 
-(***************************************************************************)
-(*     Properties of ballot and vote                                       *)
-(***************************************************************************)
-
-(***************************************************************************)
-(* The maximal ballot in which an acceptor a voted is always less than or  *)
-(* equal to its current ballot.                                            *)
-(***************************************************************************)
-WellFormed == \A a \in Acceptors : \A i \in Instances : \A b \in Ballots :
-    b > ballot[a] => vote[a][i][b] = None
-
-ChosenAt(i,b,v) ==
-    \E Q \in Quorums : \A a \in Q : vote[a][i][b] = v
-
-Chosen(i,v) ==
-    \E b \in Ballots : ChosenAt(i,b,v)
-
-Choosable(v, i, b) ==
-    \E Q \in Quorums : \A a \in Q : ballot[a] > b => vote[a][i][b] = v
     
-SafeAt(v, i, b) ==
-    \A b2 \in Ballots : \A v2 \in V : 
-        (b2 < b /\ Choosable(v2, i, b2))
-        => v = v2
-
-SafeInstanceVoteArray(i) == \A b \in Ballots : \A a \in Acceptors :
-    LET v == vote[a][i][b]
-    IN  v # None => SafeAt(v, i, b)
-
-SafeVoteArray == \A i \in Instances : SafeInstanceVoteArray(i)
-
 (***************************************************************************)
-(* If the vote array is well formed and the vote array is safe, then for   *)
-(* each instance only a unique value can be chosen.                        *)
+(* Now starts the specification of the algorithm                           *)
 (***************************************************************************)
-THEOREM TypeInv /\ WellFormed /\ SafeVoteArray => \A i \in Instances :
-    \A v1,v2 \in V : Chosen(i, v1) /\ Chosen(i, v2) => v1 = v2
 
 (***************************************************************************)
 (* A ballot is conservative when all acceptors which vote in the ballot    *)
@@ -130,17 +97,6 @@ ProvedSafeAt(i, Q, b) ==
     IF HighestVote(i, b-1, Q) # None
     THEN {HighestVote(i, b-1, Q)}
     ELSE V
-    
-(***************************************************************************)
-(* In a well-formed, safe, and conservative vote array, all values that    *)
-(* are proved safe are safe.                                               *)
-(***************************************************************************)
-THEOREM TypeInv /\ WellFormed /\ SafeVoteArray /\ ConservativeVoteArray 
-    =>  \A v \in V : \A i \in Instances : 
-            \A Q \in Quorums : \A b \in Ballots :
-                /\  \A a \in Q : ballot[a] \geq b
-                /\  v \in ProvedSafeAt(i, Q, b) 
-                => SafeAt(v, i, b) 
 
 (***************************************************************************)
 (* The propose action:                                                     *)
@@ -188,15 +144,69 @@ Next ==
     \/  \E v \in V : Propose(v)
     \/  \E a \in Acceptors : \E b \in Ballots : JoinBallot(a, b)
     \/  \E a \in Acceptors : \E i \in Instances : Vote(a, i)
+
+Spec == Init /\ [][Next]_<<ballot,vote,propCmds>>
+
+(***************************************************************************)
+(* Some properties and invariants that help understanding the algo and     *)
+(* would probably be needed in a proof.                                    *)
+(***************************************************************************)
+
+(***************************************************************************)
+(* The maximal ballot in which an acceptor a voted is always less than or  *)
+(* equal to its current ballot.                                            *)
+(***************************************************************************)
+WellFormed == \A a \in Acceptors : \A i \in Instances : \A b \in Ballots :
+    b > ballot[a] => vote[a][i][b] = None
     
+THEOREM Spec => []WellFormed
+
+ChosenAt(i,b,v) ==
+    \E Q \in Quorums : \A a \in Q : vote[a][i][b] = v
+
+Chosen(i,v) ==
+    \E b \in Ballots : ChosenAt(i,b,v)
+
+Choosable(v, i, b) ==
+    \E Q \in Quorums : \A a \in Q : ballot[a] > b => vote[a][i][b] = v
+    
+SafeAt(v, i, b) ==
+    \A b2 \in Ballots : \A v2 \in V : 
+        (b2 < b /\ Choosable(v2, i, b2))
+        => v = v2
+
+SafeInstanceVoteArray(i) == \A b \in Ballots : \A a \in Acceptors :
+    LET v == vote[a][i][b]
+    IN  v # None => SafeAt(v, i, b)
+
+SafeVoteArray == \A i \in Instances : SafeInstanceVoteArray(i)
+
+THEOREM Spec => []SafeVoteArray
+
+(***************************************************************************)
+(* If the vote array is well formed and the vote array is safe, then for   *)
+(* each instance only a unique value can be chosen.                        *)
+(***************************************************************************)
+THEOREM TypeInv /\ WellFormed /\ SafeVoteArray => \A i \in Instances :
+    \A v1,v2 \in V : Chosen(i, v1) /\ Chosen(i, v2) => v1 = v2
+
+(***************************************************************************)
+(* In a well-formed, safe, and conservative vote array, all values that    *)
+(* are proved safe are safe.                                               *)
+(***************************************************************************)
+THEOREM TypeInv /\ WellFormed /\ SafeVoteArray /\ ConservativeVoteArray 
+    =>  \A v \in V : \A i \in Instances : 
+            \A Q \in Quorums : \A b \in Ballots :
+                /\  \A a \in Q : ballot[a] \geq b
+                /\  v \in ProvedSafeAt(i, Q, b) 
+                => SafeAt(v, i, b) 
 Correctness ==  
     \A i \in Instances : \A v1,v2 \in V :
         Chosen(i, v1) /\ Chosen(i, v2) => v1 = v2
-
-Spec == Init /\ [][Next]_<<ballot,vote,propCmds>>
         
+THEOREM Spec => []Correctness
 
 =============================================================================
 \* Modification History
-\* Last modified Sat Nov 14 17:36:29 EST 2015 by nano
+\* Last modified Thu Jan 21 01:21:39 EST 2016 by nano
 \* Created Mon Nov 02 09:08:37 EST 2015 by nano
