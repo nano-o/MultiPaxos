@@ -43,7 +43,7 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
         \* Here we could take anything in Bal(p) for the f[p].mbal component; again, we set it to reduce the state-space.
         dblock \in {f \in [P -> Dblock] : \A p \in P : 
             f[p].mbal = Min(Bals(p)) /\ f[p].inp # NotAnInput /\ f[p].bal = NotABallot};
-        decisions = {};
+        decisions = {}; \* A ghost variable to track the decisions. TODO: replace by pc = Done and not aborted.
     define {
         MaxBal(bals) == IF bals = {NotABallot} 
             THEN NotABallot
@@ -74,7 +74,7 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
                                 phase := 1;
                                 goto "l1"
                             } else {
-                                aborted := TRUE;
+                                aborted := TRUE; \* TODO: why not leave the process here with await FALSE?
                                 goto "Done"
                             }
                         }
@@ -90,7 +90,7 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
                     phase := 2;
                     goto "l1" 
                 } else 
-                    decisions := decisions \union {dblock[self].inp}
+                    decisions := decisions \union {dblock[self].inp} \* Not needed, we now that a process reaching label Done has decided.
         }
 }
 *)
@@ -209,5 +209,5 @@ Inv4 == \A p \in P : pc[p] = "Done" /\ \neg aborted[p] => Choosable(rs[p].inp, r
     
 =============================================================================
 \* Modification History
-\* Last modified Mon Jan 09 22:43:03 PST 2017 by nano
+\* Last modified Mon Jan 09 22:57:34 PST 2017 by nano
 \* Created Mon Jan 09 08:47:33 PST 2017 by nano
