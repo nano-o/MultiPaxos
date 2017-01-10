@@ -12,11 +12,11 @@ Bals(p) == {b \in Ballots : b % N = p-1}
 
 CONSTANT NotABallot, V, NotAnInput, defaultInitValue
 VARIABLES rs, dblock, decisions, pc
-VARIABLES toRead, phase, blocksRead
+VARIABLES toRead, phase, blocksRead, aborted
 
 INSTANCE DiskPaxos
 
 =============================================================================
 \* Modification History
-\* Last modified Mon Jan 09 18:34:16 PST 2017 by nano
+\* Last modified Mon Jan 09 20:45:20 PST 2017 by nano
 \* Created Mon Jan 09 18:08:36 PST 2017 by nano

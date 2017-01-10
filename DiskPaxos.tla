@@ -9,10 +9,12 @@
 (* arrays? What about the Choosable predicate and its monotonicity?        *)
 (*                                                                         *)
 (* A value is choosable at ballot b if the owner p of b can complete its   *)
-(* ballot with v.  This is equivalent to the disjunction of the following: *)
-(* rs[p].mbal < b and rs[p].mbal is the highest ballot; rs[p].mbal = b and *)
-(* rs[p].mbal is the highest ballot and rs[p].inp = v; rs[p].mbal =        *)
-(* rs[p].bal = b and rs[p].inp = v.                                        *)
+(* ballot with v.  See below for a definition.                             *)
+(*                                                                         *)
+(* We have that every decided value is choosable.  Moreover, every value   *)
+(* making it to rs.val (in phase 2) is equal to any choosable value at a   *)
+(* lower ballot.  Proved by induction like in Paxos.                       *)
+(*                                                                         *)
 (***************************************************************************)
 
 EXTENDS Naturals
@@ -60,7 +62,7 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
             \* Does not work... so we have to use global variables.
             \* dblock \in {db \in Dblock : db.mbal \in Bals(self) /\ db.inp # NotAnInput};
             toRead; phase = 1;
-            blocksRead = {};
+            blocksRead = {}; aborted = FALSE;
         {   l1: rs[self] := dblock[self];
                 toRead := P;
             l2: while (toRead # {})
@@ -68,9 +70,13 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
                         if (dbp.mbal # NotABallot /\ dbp.mbal > dblock[self].mbal) {
                             if (\E b \in Bals(self) : b > dblock[self].mbal) {
                                 dblock[self].mbal := CHOOSE b \in Bals(self) : 
-                                    b > dblock[self].mbal; 
+                                    b > dblock[self].mbal;
+                                phase := 1;
                                 goto "l1"
-                            } else goto "Done"
+                            } else {
+                                aborted := TRUE;
+                                goto "Done"
+                            }
                         }
                         else {
                             blocksRead := blocksRead \union {rs[p]};
@@ -105,9 +111,9 @@ Inp(blocksRead) ==
         ELSE CHOOSE inp \in V : \E db \in nonInitBlks :
             db.inp = inp /\ db.bal = MaxBal(bals)
 
-VARIABLES toRead, phase, blocksRead
+VARIABLES toRead, phase, blocksRead, aborted
 
-vars == << rs, dblock, decisions, pc, toRead, phase, blocksRead >>
+vars == << rs, dblock, decisions, pc, toRead, phase, blocksRead, aborted >>
 
 ProcSet == (P)
 
@@ -121,13 +127,14 @@ Init == (* Global variables *)
         /\ toRead = [self \in P |-> defaultInitValue]
         /\ phase = [self \in P |-> 1]
         /\ blocksRead = [self \in P |-> {}]
+        /\ aborted = [self \in P |-> FALSE]
         /\ pc = [self \in ProcSet |-> "l1"]
 
 l1(self) == /\ pc[self] = "l1"
             /\ rs' = [rs EXCEPT ![self] = dblock[self]]
             /\ toRead' = [toRead EXCEPT ![self] = P]
             /\ pc' = [pc EXCEPT ![self] = "l2"]
-            /\ UNCHANGED << dblock, decisions, phase, blocksRead >>
+            /\ UNCHANGED << dblock, decisions, phase, blocksRead, aborted >>
 
 l2(self) == /\ pc[self] = "l2"
             /\ IF toRead[self] # {}
@@ -137,17 +144,21 @@ l2(self) == /\ pc[self] = "l2"
                                  THEN /\ IF \E b \in Bals(self) : b > dblock[self].mbal
                                             THEN /\ dblock' = [dblock EXCEPT ![self].mbal =                  CHOOSE b \in Bals(self) :
                                                                                             b > dblock[self].mbal]
+                                                 /\ phase' = [phase EXCEPT ![self] = 1]
                                                  /\ pc' = [pc EXCEPT ![self] = "l1"]
-                                            ELSE /\ pc' = [pc EXCEPT ![self] = "Done"]
-                                                 /\ UNCHANGED dblock
+                                                 /\ UNCHANGED aborted
+                                            ELSE /\ aborted' = [aborted EXCEPT ![self] = TRUE]
+                                                 /\ pc' = [pc EXCEPT ![self] = "Done"]
+                                                 /\ UNCHANGED << dblock, phase >>
                                       /\ UNCHANGED << toRead, blocksRead >>
                                  ELSE /\ blocksRead' = [blocksRead EXCEPT ![self] = blocksRead[self] \union {rs[p]}]
                                       /\ toRead' = [toRead EXCEPT ![self] = toRead[self] \ {p}]
                                       /\ pc' = [pc EXCEPT ![self] = "l2"]
-                                      /\ UNCHANGED dblock
+                                      /\ UNCHANGED << dblock, phase, aborted >>
                   ELSE /\ pc' = [pc EXCEPT ![self] = "l3"]
-                       /\ UNCHANGED << dblock, toRead, blocksRead >>
-            /\ UNCHANGED << rs, decisions, phase >>
+                       /\ UNCHANGED << dblock, toRead, phase, blocksRead, 
+                                       aborted >>
+            /\ UNCHANGED << rs, decisions >>
 
 l3(self) == /\ pc[self] = "l3"
             /\ IF phase[self] = 1
@@ -160,7 +171,7 @@ l3(self) == /\ pc[self] = "l3"
                   ELSE /\ decisions' = (decisions \union {dblock[self].inp})
                        /\ pc' = [pc EXCEPT ![self] = "Done"]
                        /\ UNCHANGED << dblock, phase >>
-            /\ UNCHANGED << rs, toRead, blocksRead >>
+            /\ UNCHANGED << rs, toRead, blocksRead, aborted >>
 
 proc(self) == l1(self) \/ l2(self) \/ l3(self)
 
@@ -193,8 +204,10 @@ Choosable(v, b) == LET p == Owner(b) IN
 Inv3 == \A v \in V : \A p \in P : 
     (phase[p] = 2 /\ dblock[p].inp = v) => (\A b2 \in Ballots : 
         b2 < dblock[p].bal => (\A w \in V : Choosable(w,b2) => v = w))
+
+Inv4 == \A p \in P : pc[p] = "Done" /\ \neg aborted[p] => Choosable(rs[p].inp, rs[p].bal) 
     
 =============================================================================
 \* Modification History
-\* Last modified Mon Jan 09 20:25:34 PST 2017 by nano
+\* Last modified Mon Jan 09 22:43:03 PST 2017 by nano
 \* Created Mon Jan 09 08:47:33 PST 2017 by nano
