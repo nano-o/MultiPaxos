@@ -4,6 +4,14 @@
 (* A formalization of the SWMR-Shared-Memory Disk Paxos, as described in   *)
 (* Lamport and Gafni's paper.                                              *)
 (*                                                                         *)
+(* The idea of the algorithm is that each process has a SWMR register.  A  *)
+(* process starts round r by setting the mbal component of its register to *)
+(* r.  Then it reads all the registers.  If none of the have a round       *)
+(* greater than r, the process computes a safe value, and then writes this *)
+(* value in the inp component of its register and writes r to the bal      *)
+(* component.  Finally it reads again all the registers and decides if     *)
+(* none have a greater ballot than r.                                      *)
+(*                                                                         *)
 (* This is an interesting view on Paxos.  Can we base the correctness      *)
 (* proof on the same notions as for classic Paxos? I.e.  what about ballot *)
 (* arrays? What about the Choosable predicate and its monotonicity?        *)
@@ -37,13 +45,14 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
 (*
 --algorithm DiskPaxos {
     variables
+        \* The SWMR registers.
         \* Below the f[p].inp component does not matter, but it reduces the state-space to set it.
         rs \in {f \in [P -> Dblock] : \A p \in P : 
             f[p].mbal = NotABallot /\ f[p].bal = NotABallot /\ f[p].inp = NotAnInput};
+        \* dblock[p] is a local variable.
         \* Here we could take anything in Bal(p) for the f[p].mbal component; again, we set it to reduce the state-space.
         dblock \in {f \in [P -> Dblock] : \A p \in P : 
             f[p].mbal = Min(Bals(p)) /\ f[p].inp # NotAnInput /\ f[p].bal = NotABallot};
-        decisions = {}; \* A ghost variable to track the decisions. TODO: replace by pc = Done and not aborted.
     define {
         MaxBal(bals) == IF bals = {NotABallot} 
             THEN NotABallot
@@ -62,7 +71,7 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
             \* Does not work... so we have to use global variables.
             \* dblock \in {db \in Dblock : db.mbal \in Bals(self) /\ db.inp # NotAnInput};
             toRead; phase = 1;
-            blocksRead = {}; aborted = FALSE;
+            blocksRead = {};
         {   l1: rs[self] := dblock[self];
                 toRead := P;
             l2: while (toRead # {})
@@ -74,8 +83,7 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
                                 phase := 1;
                                 goto "l1"
                             } else {
-                                aborted := TRUE; \* TODO: why not leave the process here with await FALSE?
-                                goto "Done"
+                                await FALSE; \* We block the process, as it ran out of ballots.
                             }
                         }
                         else {
@@ -89,14 +97,13 @@ Min(xs) == CHOOSE x \in xs : \A y \in xs : y >= x
                         ELSE Inp(blocksRead);
                     phase := 2;
                     goto "l1" 
-                } else 
-                    decisions := decisions \union {dblock[self].inp} \* Not needed, we now that a process reaching label Done has decided.
+                }
         }
 }
 *)
 \* BEGIN TRANSLATION
 CONSTANT defaultInitValue
-VARIABLES rs, dblock, decisions, pc
+VARIABLES rs, dblock, pc
 
 (* define statement *)
 MaxBal(bals) == IF bals = {NotABallot}
@@ -111,9 +118,9 @@ Inp(blocksRead) ==
         ELSE CHOOSE inp \in V : \E db \in nonInitBlks :
             db.inp = inp /\ db.bal = MaxBal(bals)
 
-VARIABLES toRead, phase, blocksRead, aborted
+VARIABLES toRead, phase, blocksRead
 
-vars == << rs, dblock, decisions, pc, toRead, phase, blocksRead, aborted >>
+vars == << rs, dblock, pc, toRead, phase, blocksRead >>
 
 ProcSet == (P)
 
@@ -122,19 +129,17 @@ Init == (* Global variables *)
                   f[p].mbal = NotABallot /\ f[p].bal = NotABallot /\ f[p].inp = NotAnInput}
         /\ dblock \in        {f \in [P -> Dblock] : \A p \in P :
                       f[p].mbal = Min(Bals(p)) /\ f[p].inp # NotAnInput /\ f[p].bal = NotABallot}
-        /\ decisions = {}
         (* Process proc *)
         /\ toRead = [self \in P |-> defaultInitValue]
         /\ phase = [self \in P |-> 1]
         /\ blocksRead = [self \in P |-> {}]
-        /\ aborted = [self \in P |-> FALSE]
         /\ pc = [self \in ProcSet |-> "l1"]
 
 l1(self) == /\ pc[self] = "l1"
             /\ rs' = [rs EXCEPT ![self] = dblock[self]]
             /\ toRead' = [toRead EXCEPT ![self] = P]
             /\ pc' = [pc EXCEPT ![self] = "l2"]
-            /\ UNCHANGED << dblock, decisions, phase, blocksRead, aborted >>
+            /\ UNCHANGED << dblock, phase, blocksRead >>
 
 l2(self) == /\ pc[self] = "l2"
             /\ IF toRead[self] # {}
@@ -146,19 +151,17 @@ l2(self) == /\ pc[self] = "l2"
                                                                                             b > dblock[self].mbal]
                                                  /\ phase' = [phase EXCEPT ![self] = 1]
                                                  /\ pc' = [pc EXCEPT ![self] = "l1"]
-                                                 /\ UNCHANGED aborted
-                                            ELSE /\ aborted' = [aborted EXCEPT ![self] = TRUE]
-                                                 /\ pc' = [pc EXCEPT ![self] = "Done"]
+                                            ELSE /\ FALSE
+                                                 /\ pc' = [pc EXCEPT ![self] = "l2"]
                                                  /\ UNCHANGED << dblock, phase >>
                                       /\ UNCHANGED << toRead, blocksRead >>
                                  ELSE /\ blocksRead' = [blocksRead EXCEPT ![self] = blocksRead[self] \union {rs[p]}]
                                       /\ toRead' = [toRead EXCEPT ![self] = toRead[self] \ {p}]
                                       /\ pc' = [pc EXCEPT ![self] = "l2"]
-                                      /\ UNCHANGED << dblock, phase, aborted >>
+                                      /\ UNCHANGED << dblock, phase >>
                   ELSE /\ pc' = [pc EXCEPT ![self] = "l3"]
-                       /\ UNCHANGED << dblock, toRead, phase, blocksRead, 
-                                       aborted >>
-            /\ UNCHANGED << rs, decisions >>
+                       /\ UNCHANGED << dblock, toRead, phase, blocksRead >>
+            /\ rs' = rs
 
 l3(self) == /\ pc[self] = "l3"
             /\ IF phase[self] = 1
@@ -167,11 +170,9 @@ l3(self) == /\ pc[self] = "l3"
                                                                  ELSE Inp(blocksRead[self])]
                        /\ phase' = [phase EXCEPT ![self] = 2]
                        /\ pc' = [pc EXCEPT ![self] = "l1"]
-                       /\ UNCHANGED decisions
-                  ELSE /\ decisions' = (decisions \union {dblock[self].inp})
-                       /\ pc' = [pc EXCEPT ![self] = "Done"]
+                  ELSE /\ pc' = [pc EXCEPT ![self] = "Done"]
                        /\ UNCHANGED << dblock, phase >>
-            /\ UNCHANGED << rs, toRead, blocksRead, aborted >>
+            /\ UNCHANGED << rs, toRead, blocksRead >>
 
 proc(self) == l1(self) \/ l2(self) \/ l3(self)
 
@@ -189,7 +190,7 @@ Inv1 == \A p \in P : dblock[p].bal # NotABallot => dblock[p].bal <= dblock[p].mb
 
 Inv2 == \A p \in P : rs[p].mbal = rs[p].bal /\ rs[p].mbal # NotABallot => phase[p] = 2 
 
-Agreement == \A v,w \in decisions : v = w
+Agreement == \A p,q \in P : pc[p] = "Done" /\ pc[q] = "Done" => dblock[p].inp = dblock[q].inp
  
 Owner(b) == CHOOSE p \in P : b \in Bals(p)
 
@@ -205,9 +206,9 @@ Inv3 == \A v \in V : \A p \in P :
     (phase[p] = 2 /\ dblock[p].inp = v) => (\A b2 \in Ballots : 
         b2 < dblock[p].bal => (\A w \in V : Choosable(w,b2) => v = w))
 
-Inv4 == \A p \in P : pc[p] = "Done" /\ \neg aborted[p] => Choosable(rs[p].inp, rs[p].bal) 
+Inv4 == \A p \in P : pc[p] = "Done" => Choosable(rs[p].inp, rs[p].bal) 
     
 =============================================================================
 \* Modification History
-\* Last modified Mon Jan 09 22:57:34 PST 2017 by nano
+\* Last modified Fri Jan 13 18:58:38 PST 2017 by nano
 \* Created Mon Jan 09 08:47:33 PST 2017 by nano
